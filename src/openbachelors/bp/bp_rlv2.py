@@ -203,6 +203,7 @@ class Rlv2BasicManager:
         ELITE_BATTLE = 2
         BOSS_BATTLE = 4
         SHOP = 8
+        DUEL = 262144
 
     theme_id_node_type_dict = ConstJson(
         {
@@ -229,6 +230,7 @@ class Rlv2BasicManager:
                 NodeType.ELITE_BATTLE: 2,
                 NodeType.BOSS_BATTLE: 4,
                 NodeType.SHOP: 4096,
+                NodeType.DUEL: 262144,
             },
         }
     )
@@ -341,6 +343,8 @@ class Rlv2BasicManager:
                 node_type = self.NodeType.ELITE_BATTLE
             if stage_obj["isBoss"]:
                 node_type = self.NodeType.BOSS_BATTLE
+            if "_duel_" in stage_id:
+                node_type = self.NodeType.DUEL
 
             node_type_int = self.get_node_type_int(self.theme_id, node_type)
 
@@ -432,13 +436,24 @@ class Rlv2BasicManager:
 
         return good_lst
 
-    def rlv2_moveTo(self):
-        cursor_pos = self.request_json["to"]
+    def get_current_node_type_int(self):
+        cursor_obj = self.player_data["rlv2"]["current"]["player"]["cursor"]
 
+        node_pos_x = cursor_obj["position"]["x"]
+        node_pos_y = cursor_obj["position"]["y"]
+
+        node_idx = self.get_node_idx(node_pos_x, node_pos_y)
+
+        zone_idx = cursor_obj["zone"]
+
+        return self.player_data["rlv2"]["current"]["map"]["zones"][str(zone_idx)][
+            "nodes"
+        ][node_idx]["type"]
+
+    def move_to_shop(self):
         good_lst = self.get_good_lst()
 
         self.player_data["rlv2"]["current"]["player"]["state"] = "PENDING"
-        self.player_data["rlv2"]["current"]["player"]["cursor"]["position"] = cursor_pos
         self.player_data["rlv2"]["current"]["player"]["pending"] = [
             {
                 "index": "e_3",
@@ -456,6 +471,57 @@ class Rlv2BasicManager:
                         "goods": good_lst,
                         "_done": false,
                     }
+                },
+            }
+        ]
+
+    def get_theme_num_id(self):
+        return int(self.theme_id.rpartition("_")[-1])
+
+    def move_to_duel(self):
+        theme_num_id = self.get_theme_num_id()
+
+        self.player_data["rlv2"]["current"]["player"]["state"] = "PENDING"
+        self.player_data["rlv2"]["current"]["player"]["pending"] = [
+            {
+                "index": "e_7",
+                "type": "SCENE",
+                "content": {
+                    "scene": {
+                        "id": f"scene_ro{theme_num_id}_sala1_enter",
+                        "choices": {
+                            f"choice_ro{theme_num_id}_sala1_1": 1,
+                        },
+                        "choiceAdditional": {
+                            f"choice_ro{theme_num_id}_sala1_1": {
+                                "rewards": [],
+                                "costs": [],
+                            },
+                        },
+                    }
+                },
+            }
+        ]
+
+    def rlv2_moveTo(self):
+        cursor_pos = self.request_json["to"]
+        self.player_data["rlv2"]["current"]["player"]["cursor"]["position"] = cursor_pos
+
+        node_type_int = self.get_current_node_type_int()
+        if node_type_int == self.get_node_type_int(self.theme_id, self.NodeType.SHOP):
+            self.move_to_shop()
+        elif node_type_int == self.get_node_type_int(self.theme_id, self.NodeType.DUEL):
+            self.move_to_duel()
+
+    def rlv2_selectChoice(self):
+        self.player_data["rlv2"]["current"]["player"]["pending"] = [
+            {
+                "index": "e_8",
+                "type": "BATTLE",
+                "content": {
+                    "battle": {
+                        "state": 0,
+                    },
                 },
             }
         ]
@@ -815,6 +881,10 @@ class Rlv2BasicManager:
         )
 
         cursor_pos = self.request_json["to"]
+        if cursor_pos is not None:
+            self.player_data["rlv2"]["current"]["player"]["cursor"]["position"] = (
+                cursor_pos
+            )
 
         roguelike_topic_table = const_json_loader[ROGUELIKE_TOPIC_TABLE]
 
@@ -830,7 +900,6 @@ class Rlv2BasicManager:
         unkeep_buff = self.get_unkeep_buff()
 
         self.player_data["rlv2"]["current"]["player"]["state"] = "PENDING"
-        self.player_data["rlv2"]["current"]["player"]["cursor"]["position"] = cursor_pos
         self.player_data["rlv2"]["current"]["player"]["pending"] = [
             {
                 "index": "e_4",
@@ -1531,6 +1600,19 @@ async def rlv2_closeRecruitTicket(player_data, request: Request):
     rlv2_manager = get_rlv2_manager(player_data, request_json, response)
 
     rlv2_manager.rlv2_closeRecruitTicket()
+
+    return response
+
+
+@router.post("/rlv2/selectChoice")
+@player_data_decorator
+async def rlv2_selectChoice(player_data, request: Request):
+    request_json = await request.json()
+    response = {}
+
+    rlv2_manager = get_rlv2_manager(player_data, request_json, response)
+
+    rlv2_manager.rlv2_selectChoice()
 
     return response
 
