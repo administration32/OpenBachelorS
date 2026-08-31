@@ -239,6 +239,9 @@ class Rlv2BasicManager:
         if theme_id not in self.theme_id_node_type_dict:
             theme_id = "rogue_4"
 
+        if node_type not in self.theme_id_node_type_dict[theme_id]:
+            return -1
+
         return self.theme_id_node_type_dict[theme_id][node_type]
 
     MAX_NODE_POS_X = 10
